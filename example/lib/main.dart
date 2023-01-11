@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:sbp/data/asset_links_data.dart';
 import 'package:sbp/data/c2bmembers_data.dart';
 import 'package:sbp/models/application_info_model.dart';
+import 'package:sbp/models/asset_link_model.dart';
 import 'package:sbp/models/c2bmembers_model.dart';
 import 'package:sbp/sbp.dart';
 
@@ -35,12 +36,15 @@ class _MyAppState extends State<MyApp> {
   Future<void> getInstalledBanks() async {
     try {
       if (Platform.isAndroid) {
-        informations =
-            await Sbp.getAndroidInstalledByAssetLinksJsonBanks(assetLinksData);
+        final List<String> packageNamesApplications = assetLinksData
+            .map((assetLink) => AssetLinkModel.fromJson(assetLink).assetLinkTargetModel.packageName)
+            .toList();
+        informations = await Sbp.getAndroidInstalledPackageNames(packageNamesApplications);
       }
       if (Platform.isIOS) {
-        informations =
-            await Sbp.getIOSInstalledByC2bmembersJsonBanks(c2bmembersData);
+        final schemesList =
+            C2bmembersModel.fromJson(c2bmembersData).c2bmembersModel.map((e) => e.schema).toList();
+        informations = await Sbp.getIOSInstalledBySchemesBanks(schemesList);
       }
     } on Exception catch (e) {
       throw Exception(e);
@@ -59,8 +63,7 @@ class _MyAppState extends State<MyApp> {
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
             decoration: const BoxDecoration(
-                color: Colors.tealAccent,
-                borderRadius: BorderRadius.all(Radius.circular(10))),
+                color: Colors.tealAccent, borderRadius: BorderRadius.all(Radius.circular(10))),
             child: Builder(builder: (context) {
               return GestureDetector(
                 onTap: () => showModalBottomSheet(
@@ -71,8 +74,7 @@ class _MyAppState extends State<MyApp> {
                       top: Radius.circular(20),
                     ),
                   ),
-                  builder: (ctx) =>
-                      SbpModalBottomSheetWidget(informations, widget.url),
+                  builder: (ctx) => SbpModalBottomSheetWidget(informations, widget.url),
                 ),
                 child: const Text('Открыть модальное окно'),
               );
@@ -102,10 +104,10 @@ class SbpHeaderModalSheet extends StatelessWidget {
               color: Colors.grey),
         ),
         const SizedBox(height: 20),
-        Image.asset(
-          'assets/sbp.png',
-          width: 100,
-        ),
+        // Image.asset(
+        //   'assets/sbp.png',
+        //   width: 100,
+        // ),
         const SizedBox(height: 10),
         const Text('Выберите банк для оплаты по СБП'),
         const SizedBox(height: 20),
@@ -151,11 +153,12 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
   final List<dynamic> informations;
   final String url;
 
-  const SbpModalBottomSheetWidget(this.informations, this.url, {Key? key})
-      : super(key: key);
+  const SbpModalBottomSheetWidget(this.informations, this.url, {Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final allBanks = C2bmembersModel.fromJson(c2bmembersData).c2bmembersModel;
+
     /// если есть информация о банках, то отображаем их
     if (informations.isNotEmpty) {
       return Column(
@@ -163,11 +166,10 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
           const SbpHeaderModalSheet(),
           Expanded(
             child: ListView.separated(
-              itemCount: informations.length,
+              itemCount: allBanks.length,
               itemBuilder: (ctx, index) {
                 if (Platform.isAndroid) {
-                  final information =
-                      informations[index] as ApplicationInfoModel;
+                  final information = informations[index] as ApplicationInfoModel;
                   return Container(
                     decoration: const BoxDecoration(
                       color: Colors.white70,
@@ -176,8 +178,7 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
                       ),
                     ),
                     child: GestureDetector(
-                      onTap: () =>
-                          openAndroidBank(url, information.packageName),
+                      onTap: () => openAndroidBank(url, information.packageName),
                       child: Row(
                         children: [
                           const SizedBox(width: 10),
@@ -195,7 +196,7 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
                     ),
                   );
                 }
-                final information = informations[index] as C2bmemberModel;
+                final information = informations[index] as String;
                 return Container(
                   decoration: const BoxDecoration(
                     color: Colors.white70,
@@ -204,27 +205,12 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
                     ),
                   ),
                   child: GestureDetector(
-                    onTap: () => openIOSBank(url, information.schema),
+                    onTap: () => openIOSBank(url, allBanks[index].schema),
                     child: Row(
                       children: [
                         const SizedBox(width: 10),
-                        SizedBox(
-                          width: 80.0,
-                          height: 80.0,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20.0),
-                            child: information.icon.isNotEmpty
-                                ? Image.asset(
-                                    information.icon,
-                                  )
-                                : Image.network(
-                                    information.logoURL,
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
                         Center(
-                          child: Text(information.bankName),
+                          child: Text(allBanks[index].bankName),
                         ),
                         const SizedBox(width: 10)
                       ],
@@ -232,8 +218,7 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
                   ),
                 );
               },
-              separatorBuilder: (BuildContext context, int index) =>
-                  const SizedBox(height: 10),
+              separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 10),
             ),
           ),
           const SizedBox(height: 20),
@@ -249,6 +234,5 @@ class SbpModalBottomSheetWidget extends StatelessWidget {
       await Sbp.openAndroidBank(url, packageName);
 
   /// передается scheme
-  Future<void> openIOSBank(String url, String scheme) async =>
-      await Sbp.openBankIOS(url, scheme);
+  Future<void> openIOSBank(String url, String scheme) async => await Sbp.openBankIOS(url, scheme);
 }

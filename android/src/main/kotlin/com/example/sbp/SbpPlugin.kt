@@ -3,11 +3,13 @@ package com.example.sbp
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import androidx.annotation.NonNull
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -38,45 +40,15 @@ class SbpPlugin : FlutterPlugin, MethodCallHandler {
         when (call.method) {
             "getInstalledBanks" -> {
                 val pm: PackageManager = context.applicationContext.packageManager
-                val installedApplications =
-                    pm.getInstalledApplications(PackageManager.GET_META_DATA)
 
                 val applicationPackageNames =
-                    call.argument<List<String>>("application_package_names")!!
+                    call.argument<List<String>>("application_package_names")!!.distinct()
 
-                val installedBanks = mutableListOf<Map<String, Any>>()
+                val installedBanks = mutableListOf<String>()
 
-                for (installedApplication in installedApplications) {
-                    for (applicationPackageName in applicationPackageNames) {
-                        if (installedApplication.packageName == applicationPackageName) {
-                            val icon = installedApplication.loadIcon(pm)
-                            val name = pm.getApplicationLabel(installedApplication)
-
-                            val bitmap: Bitmap = if (icon is BitmapDrawable) {
-                                icon.bitmap
-                            } else {
-                                val bitmap = Bitmap.createBitmap(
-                                    icon.intrinsicWidth,
-                                    icon.intrinsicHeight,
-                                    Bitmap.Config.ARGB_8888
-                                )
-                                val canvas = Canvas(bitmap)
-                                icon.setBounds(0, 0, canvas.width, canvas.height)
-                                icon.draw(canvas)
-                                bitmap
-                            }
-
-                            val stream = ByteArrayOutputStream()
-                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                            val byteArray = stream.toByteArray()
-                            installedBanks.add(
-                                mapOf(
-                                    "package_name" to installedApplication.packageName,
-                                    "name" to name.toString(),
-                                    "bitmap" to byteArray
-                                )
-                            )
-                        }
+                for (packageName in applicationPackageNames) {
+                    if (isPackageInstalled(packageName, pm)) {
+                        installedBanks.add(packageName)
                     }
                 }
                 result.success(installedBanks)
@@ -92,6 +64,22 @@ class SbpPlugin : FlutterPlugin, MethodCallHandler {
             else -> {
                 result.notImplemented()
             }
+        }
+    }
+
+    private fun PackageManager.getPackageInfoCompat(packageName: String, flags: Int = 0): PackageInfo =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
+        } else {
+            @Suppress("DEPRECATION") getPackageInfo(packageName, flags)
+        }
+
+    private fun isPackageInstalled(packageName: String, packageManager: PackageManager): Boolean {
+        return try {
+            packageManager.getPackageInfoCompat(packageName, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
         }
     }
 
